@@ -135,6 +135,59 @@ def plot_tsne(features_h, labels, save_path="tsne_result.png"):
     print("t-SNE 图像已保存完毕。")
 
 # -------------------------------------------------------------
+# 4.5 在线 KNN 评估函数 (评估特征表征能力的快捷指标)
+# -------------------------------------------------------------
+@torch.no_grad()
+def evaluate_knn(model, train_loader, test_loader, device, k=20, max_samples=2000):
+    model.eval()
+    
+    # 提取训练集特征 (使用普通 transform，不带裁剪旋转等数据增强)
+    train_features, train_labels = [], []
+    for x, y in train_loader:
+        x = x.to(device)
+        h, _ = model(x)
+        h = F.normalize(h, dim=1) # L2 归一化
+        train_features.append(h.cpu())
+        train_labels.append(y)
+        if len(torch.cat(train_features, dim=0)) >= max_samples:
+            break
+    train_features = torch.cat(train_features, dim=0)[:max_samples]
+    train_labels = torch.cat(train_labels, dim=0)[:max_samples]
+    
+    # 提取测试集特征
+    test_features, test_labels = [], []
+    for x, y in test_loader:
+        x = x.to(device)
+        h, _ = model(x)
+        h = F.normalize(h, dim=1)
+        test_features.append(h.cpu())
+        test_labels.append(y)
+        if len(torch.cat(test_features, dim=0)) >= max_samples:
+            break
+    test_features = torch.cat(test_features, dim=0)[:max_samples]
+    test_labels = torch.cat(test_labels, dim=0)[:max_samples]
+    
+    # 送入 GPU 进行矩阵运算
+    train_features = train_features.to(device)
+    train_labels = train_labels.to(device)
+    test_features = test_features.to(device)
+    test_labels = test_labels.to(device)
+    
+    # 计算余弦相似度矩阵 [N_test, N_train]
+    sim_matrix = torch.matmul(test_features, train_features.T)
+    
+    # 选出最相似的 K 个样本并投票
+    _, topk_indices = sim_matrix.topk(k, dim=1)
+    topk_labels = train_labels[topk_indices]
+    predictions = torch.mode(topk_labels, dim=1).values
+    
+    correct = (predictions == test_labels).sum().item()
+    accuracy = correct / len(test_labels)
+    
+    model.train()
+    return accuracy
+
+# -------------------------------------------------------------
 # 5. 主训练与评估流程
 # -------------------------------------------------------------
 def main():
@@ -192,6 +245,20 @@ def main():
         shuffle=False, 
         num_workers=0
     )
+    
+    # 用于 KNN 在线评估的训练集 (使用和测试集相同的无增强 transform)
+    eval_train_dataset = torchvision.datasets.FashionMNIST(
+        root=data_dir,
+        train=True,
+        download=True,
+        transform=eval_transform
+    )
+    eval_train_loader = DataLoader(
+        eval_train_dataset,
+        batch_size=256,
+        shuffle=False,
+        num_workers=0
+    )
 
     # 5.2 初始化模型、优化器和损失函数
     model = SimCLRModel(out_dim=128).to(device)
@@ -224,7 +291,9 @@ def main():
                 print(f"Epoch [{epoch+1}/{epochs}], Step [{batch_idx+1}/{len(train_loader)}], Loss: {loss.item():.4f}")
                 
         avg_loss = total_loss / len(train_loader)
-        print(f"--- Epoch [{epoch+1}/{epochs}] 结束，平均 Loss: {avg_loss:.4f} ---")
+        print(f"Epoch [{epoch+1}/{epochs}] 结束，正在进行在线 KNN 评估...", flush=True)
+        knn_acc = evaluate_knn(model, eval_train_loader, test_loader, device, k=20)
+        print(f"--- Epoch [{epoch+1}/{epochs}] 结束，平均 Loss: {avg_loss:.4f}，KNN 预测准确率: {knn_acc * 100:.2f}% ---", flush=True)
         
     print("训练结束！正在提取特征进行 t-SNE 可视化...")
     

@@ -15,14 +15,13 @@ import matplotlib.pyplot as plt
 # -------------------------------------------------------------
 class ContrastiveTransformations:
     def __init__(self):
-        # 针对 28x28 灰度图的温和数据增强设计，防止过度裁剪丢失关键特征
+        # 针对 FashionMNIST 的数据增强设计，借鉴客户 @bk 项目中的成功经验
         self.base_transforms = transforms.Compose([
-            transforms.RandomResizedCrop(size=28, scale=(0.8, 1.0)), # 裁剪比例限制在 0.8-1.0
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomRotation(degrees=15),
-            transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
+            transforms.Grayscale(num_output_channels=3),
+            transforms.RandomAffine(degrees=25, translate=(0.2, 0.1), scale=(0.7, 1.3), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.RandomHorizontalFlip(p=0.5),
             transforms.ToTensor(),
-            transforms.Normalize((0.5,), (0.5,)) # 单通道归一化
+            transforms.Normalize(mean=(0.2860, 0.2860, 0.2860), std=(0.3530, 0.3530, 0.3530))
         ])
 
     def __call__(self, x):
@@ -36,10 +35,10 @@ class SimCLRModel(nn.Module):
     def __init__(self, out_dim=128):
         super().__init__()
         # 获取基础 ResNet-18 并进行小图适配魔改
-        # 1. 灰度图输入通道改为 1，卷积核改为 3x3，步长改为 1，padding 改为 1
+        # 1. 灰度图已被转换为 3 通道，卷积核改为 3x3，步长改为 1，padding 改为 1
         # 2. 移除 maxpool，避免 28x28 图片被过度降采样
         resnet = torchvision.models.resnet18(weights=None)
-        resnet.conv1 = nn.Conv2d(1, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        resnet.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
         resnet.maxpool = nn.Identity()
         
         # 提取 Encoder 部分 (去除最后的 fc 层)
@@ -227,8 +226,9 @@ def main():
     
     # 用于 t-SNE 可视化的测试集
     eval_transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=3),
         transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))
+        transforms.Normalize(mean=(0.2860, 0.2860, 0.2860), std=(0.3530, 0.3530, 0.3530))
     ])
     
     print("正在加载测试数据集...", flush=True)
@@ -265,7 +265,7 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, weight_decay=1e-4)
     criterion = InfoNCELoss(temperature=0.1) # 较低的温度系数 (0.1) 促使类内聚拢
     
-    epochs = 10  # 为了快速展示，默认训练 10 轮。可根据需要增加轮数以获得更好的聚类效果
+    epochs = 100  # 根据客户基准提升到 100 轮以充分训练特征
     print(f"开始对比训练，共 {epochs} 轮...")
     
     for epoch in range(epochs):

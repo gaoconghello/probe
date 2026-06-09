@@ -152,8 +152,9 @@ def main():
     # 数据加载
     data_dir = './data'
     eval_transform = transforms.Compose([
+        transforms.Grayscale(num_output_channels=3),
         transforms.ToTensor(),
-        transforms.Normalize((0.5,), (0.5,))
+        transforms.Normalize(mean=(0.2860, 0.2860, 0.2860), std=(0.3530, 0.3530, 0.3530))
     ])
     
     train_dataset = torchvision.datasets.FashionMNIST(root=data_dir, train=True, download=True, transform=eval_transform)

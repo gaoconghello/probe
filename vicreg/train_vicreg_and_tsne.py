@@ -196,6 +196,8 @@ def main():
         print("Using CUDA GPU for acceleration", flush=True)
         print(f"CUDA版本: {torch.version.cuda}", flush=True)
         print(f"GPU设备: {torch.cuda.get_device_name(0)}", flush=True)
+        # 开启 cuDNN 自动基准调优，自动寻找最高效的卷积算法
+        torch.backends.cudnn.benchmark = True
     else:
         device = torch.device("cpu")
         print("GPU not available. Using CPU", flush=True)
@@ -215,9 +217,11 @@ def main():
     
     train_loader = DataLoader(
         train_dataset, 
-        batch_size=256, 
+        batch_size=2048, # 针对 24G 显存进一步提升 Batch Size
         shuffle=True, 
-        num_workers=0, 
+        num_workers=16, # 发挥 128 线程撕裂者实力，暴力提速数据加载
+        pin_memory=True, # 开启锁页内存加速
+        persistent_workers=True, # 保持 worker 存活
         drop_last=True
     )
     
@@ -238,9 +242,11 @@ def main():
     
     test_loader = DataLoader(
         test_dataset, 
-        batch_size=256, 
+        batch_size=2048, 
         shuffle=False, 
-        num_workers=0
+        num_workers=16,
+        pin_memory=True,
+        persistent_workers=True
     )
     
     eval_train_dataset = torchvision.datasets.FashionMNIST(
@@ -251,9 +257,11 @@ def main():
     )
     eval_train_loader = DataLoader(
         eval_train_dataset,
-        batch_size=256,
+        batch_size=2048,
         shuffle=False,
-        num_workers=0
+        num_workers=16,
+        pin_memory=True,
+        persistent_workers=True
     )
 
     # 初始化模型、优化器、余弦衰减学习率、损失函数
@@ -269,6 +277,9 @@ def main():
     # 对齐客户默认的权重分配：sim=25.0, var=25.0, cov=1.0
     criterion = VICRegLoss(sim_weight=25.0, var_weight=25.0, cov_weight=1.0)
     
+    # 开启 AMP (自动混合精度) 加速
+    scaler = torch.cuda.amp.GradScaler()
+    
     print(f"开始 VICReg 对比预训练，共 {epochs} 轮...")
     
     for epoch in range(epochs):
@@ -279,16 +290,22 @@ def main():
         total_cov = 0
         
         for batch_idx, (images, _) in enumerate(train_loader):
-            x_i = images[0].to(device)
-            x_j = images[1].to(device)
+            # non_blocking=True 配合 pin_memory 实现异步数据传输
+            x_i = images[0].to(device, non_blocking=True)
+            x_j = images[1].to(device, non_blocking=True)
             
             optimizer.zero_grad()
-            _, z_i = model(x_i)
-            _, z_j = model(x_j)
             
-            loss, sim, var, cov = criterion(z_i, z_j)
-            loss.backward()
-            optimizer.step()
+            # 使用 autocast 开启前向传播的混合精度加速
+            with torch.cuda.amp.autocast():
+                _, z_i = model(x_i)
+                _, z_j = model(x_j)
+                loss, sim, var, cov = criterion(z_i, z_j)
+                
+            # 缩放 loss，反向传播并更新参数
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
             
             total_loss += loss.item()
             total_sim += sim.item()

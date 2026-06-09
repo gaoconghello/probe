@@ -271,8 +271,8 @@ def main():
     # 由于使用了较大的 1024 Batch Size，我们将学习率稍微降低到 5e-4 以保证训练稳定不爆炸
     optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, weight_decay=1e-4)
     
-    epochs = 100
-    # 余弦退火学习率调度器：在 100 轮内将学习率平滑降至 0
+    epochs = 1000 # 依据自监督学习的特性和客户最佳实践，将轮数提升至 1000
+    # 余弦退火学习率调度器：在 1000 轮内将学习率平滑降至 0
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=0)
     
     # 对齐客户默认的权重分配：sim=25.0, var=25.0, cov=1.0
@@ -321,10 +321,23 @@ def main():
         
         avg_loss = total_loss / len(train_loader)
         current_lr = optimizer.param_groups[0]['lr']
-        print(f"Epoch [{epoch+1}/{epochs}] 结束，当前学习率: {current_lr:.6f}，正在进行在线 KNN 评估...", flush=True)
         
-        knn_acc = evaluate_knn(model, eval_train_loader, test_loader, device, k=20)
-        print(f"--- Epoch [{epoch+1}/{epochs}] 结束，平均 Loss: {avg_loss:.4f}，KNN 预测准确率: {knn_acc * 100:.2f}% ---", flush=True)
+        # 动态 KNN 评估频率：前 200 轮每 50 轮评估，之后每 10 轮评估，以及最后一轮
+        current_epoch = epoch + 1
+        eval_flag = False
+        if current_epoch <= 200 and current_epoch % 50 == 0:
+            eval_flag = True
+        elif current_epoch > 200 and current_epoch % 10 == 0:
+            eval_flag = True
+        elif current_epoch == epochs:
+            eval_flag = True
+            
+        if eval_flag:
+            print(f"Epoch [{current_epoch}/{epochs}] 结束，当前学习率: {current_lr:.6f}，正在进行在线 KNN 评估...", flush=True)
+            knn_acc = evaluate_knn(model, eval_train_loader, test_loader, device, k=20)
+            print(f"--- Epoch [{current_epoch}/{epochs}] 结束，平均 Loss: {avg_loss:.4f}，KNN 预测准确率: {knn_acc * 100:.2f}% ---", flush=True)
+        else:
+            print(f"--- Epoch [{current_epoch}/{epochs}] 结束，平均 Loss: {avg_loss:.4f} (跳过本轮 KNN 评估以加速训练) ---", flush=True)
         
     print("训练结束！正在提取特征进行 t-SNE 可视化...")
     

@@ -20,6 +20,9 @@ def plot_tsne(features_h, true_labels=None, mode="kmeans", perplexity=50, save_p
     - perplexity: t-SNE 困惑度
     - save_path: 保存的文件路径
     """
+    # 进行 L2 归一化，对齐对比学习的余弦相似度度量
+    features_h = features_h / (np.linalg.norm(features_h, axis=1, keepdims=True) + 1e-8)
+    
     print("开始进行 PCA 降维 (512 维 -> 50 维)...")
     pca = PCA(n_components=50)
     features_pca = pca.fit_transform(features_h)

@@ -138,9 +138,18 @@ def plot_tsne(features_h, labels, save_path="tsne_result.png"):
 # 5. 主训练与评估流程
 # -------------------------------------------------------------
 def main():
-    # 检测 GPU 加速环境
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"当前运行设备: {device}")
+    # 检测 GPU 加速环境并输出详细信息
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        print("Using CUDA GPU for acceleration", flush=True)
+        print(f"CUDA版本: {torch.version.cuda}", flush=True)
+        print(f"GPU设备: {torch.cuda.get_device_name(0)}", flush=True)
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+        print("Using MPS device for acceleration", flush=True)
+    else:
+        device = torch.device("cpu")
+        print("Neither GPU nor MPS available. Using CPU", flush=True)
     
     # 5.1 数据准备 (docs/Database.md 第一种方式)
     data_dir = './data'

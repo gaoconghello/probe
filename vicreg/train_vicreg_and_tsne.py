@@ -15,10 +15,14 @@ import matplotlib.pyplot as plt
 # -------------------------------------------------------------
 class ContrastiveTransformations:
     def __init__(self):
-        # 针对 FashionMNIST 的仿射变换数据增强设计，借鉴客户 @bk 项目中的成功经验
+        # 针对 FashionMNIST 的增强策略：完全对齐客户能跑到 92.29% 的配置
+        # 自监督学习极其依赖 RandomResizedCrop 和 ColorJitter 来构建正样本
         self.base_transforms = transforms.Compose([
             transforms.Grayscale(num_output_channels=3),
-            transforms.RandomAffine(degrees=25, translate=(0.2, 0.1), scale=(0.7, 1.3), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.RandomResizedCrop(28, scale=(0.2, 1.0), interpolation=transforms.InterpolationMode.BICUBIC),
+            transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.2, 0.1)], p=0.8),
+            transforms.RandomGrayscale(p=0.2),
+            transforms.RandomSolarize(threshold=128, p=0.1),
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.ToTensor(),
             transforms.Normalize(mean=(0.2860, 0.2860, 0.2860), std=(0.3530, 0.3530, 0.3530))

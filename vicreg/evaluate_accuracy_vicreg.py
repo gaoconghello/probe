@@ -163,20 +163,20 @@ def main():
     
     train_loader = DataLoader(
         train_dataset, 
-        batch_size=2048, 
+        batch_size=1024, 
         shuffle=True, 
         num_workers=16,
         pin_memory=True,
         persistent_workers=True,
         drop_last=True
     )
-    test_loader = DataLoader(test_dataset, batch_size=2048, shuffle=False, num_workers=16, pin_memory=True)
+    test_loader = DataLoader(test_dataset, batch_size=1024, shuffle=False, num_workers=16, pin_memory=True)
     
     # 1. 评估全量 KNN 准确率
     evaluate_full_knn(device, model, train_loader, test_loader, k=20)
     
     # 2. 评估线性分类器（Linear Probe）准确率，提升到 100 轮对齐客户
-    train_loader_shuffle = DataLoader(train_dataset, batch_size=2048, shuffle=True, num_workers=16, pin_memory=True)
+    train_loader_shuffle = DataLoader(train_dataset, batch_size=1024, shuffle=True, num_workers=16, pin_memory=True)
     evaluate_linear_probe(device, model, train_loader_shuffle, test_loader, epochs=100)
 
 if __name__ == "__main__":

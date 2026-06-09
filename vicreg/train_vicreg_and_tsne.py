@@ -217,7 +217,7 @@ def main():
     
     train_loader = DataLoader(
         train_dataset, 
-        batch_size=2048, # 针对 24G 显存进一步提升 Batch Size
+        batch_size=1024, # 降低到 1024，保证更多的梯度更新步数
         shuffle=True, 
         num_workers=16, # 发挥 128 线程撕裂者实力，暴力提速数据加载
         pin_memory=True, # 开启锁页内存加速
@@ -242,7 +242,7 @@ def main():
     
     test_loader = DataLoader(
         test_dataset, 
-        batch_size=2048, 
+        batch_size=1024, 
         shuffle=False, 
         num_workers=16,
         pin_memory=True,
@@ -257,7 +257,7 @@ def main():
     )
     eval_train_loader = DataLoader(
         eval_train_dataset,
-        batch_size=2048,
+        batch_size=1024,
         shuffle=False,
         num_workers=16,
         pin_memory=True,
@@ -268,7 +268,8 @@ def main():
     model = VICRegModel(proj_hidden_dim=2048, proj_output_dim=2048).to(device)
     
     # AdamW 优化器，配置 1e-4 的权重衰减
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+    # 由于使用了较大的 1024 Batch Size，我们将学习率稍微降低到 5e-4 以保证训练稳定不爆炸
+    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4, weight_decay=1e-4)
     
     epochs = 100
     # 余弦退火学习率调度器：在 100 轮内将学习率平滑降至 0

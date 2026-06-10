@@ -15,7 +15,15 @@ def plot_tsne(features_h, true_labels=None, mode="kmeans", perplexity=50, save_p
     features_pca = pca.fit_transform(features_h)
     
     print(f"开始计算 t-SNE (50 维 -> 2 维, perplexity={perplexity})...")
-    tsne = TSNE(n_components=2, perplexity=perplexity, init='pca', random_state=42)
+    # 核心优化：1. 使用 cosine 距离完美契合自监督特征；2. 调高 early_exaggeration 强行推开类间距离形成“岛屿”
+    tsne = TSNE(
+        n_components=2, 
+        perplexity=perplexity, 
+        early_exaggeration=24.0, # 默认是 12，调大后能让群组在空间中离得更远
+        metric="cosine",         # 必须使用余弦距离，这是对比学习的“原生态”度量标准
+        init='pca', 
+        random_state=42
+    )
     features_2d = tsne.fit_transform(features_pca)
     
     plt.figure(figsize=(12, 10))
